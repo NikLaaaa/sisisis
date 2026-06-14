@@ -1,51 +1,68 @@
--- ПРОСТИЙ GUI: AUTOSTEAL + FLICK (100 ФУТІВ) + TP TO BASE
+-- ============================================
+-- AUTOSTEAL (механіка з першого скрипта) + MULTI-FLING + TP TO BASE
+-- ============================================
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Player = Players.LocalPlayer
 
--- ========== ЗМІННІ ==========
+-- ========== ЗМІННІ AUTOSTEAL ==========
 local AutoStealEnabled = false
-local SelectedTarget = nil
+local AutoStealTarget = nil
 local AutoStealConnection = nil
 
--- ========== ФУНКЦІЯ ФЛІКУ (на 100 футів у випадкову сторону) ==========
-local function FlickPlayerAway(target)
-    if not target or not target.Character then return end
+-- ========== AUTOSTEAL (ПОВНА МЕХАНІКА З ТВОГО ПЕРШОГО СКРИПТА) ==========
+local function StartAutoSteal(target)
+    if AutoStealConnection then
+        AutoStealConnection:Disconnect()
+        AutoStealConnection = nil
+    end
     
-    local targetRoot = target.Character:FindFirstChild("Humanoid") and target.Character.Humanoid.RootPart
-    if not targetRoot then return end
+    if not target or not target.Character then return false end
     
-    -- Випадковий кут (0-360 градусів)
-    local randomAngle = math.random() * math.pi * 2
-    -- 100 футів = ~30.48 студій (1 фут = 0.3048 студій)
-    local distance = 100 * 0.3048  -- ~30.48 студій
-    local randomDirection = Vector3.new(math.cos(randomAngle), 0, math.sin(randomAngle)) * distance
-    local randomHeight = math.random(20, 50)  -- Додаткова висота
+    AutoStealEnabled = true
     
-    -- Отримуємо позицію гравця
-    local targetPos = targetRoot.Position
-    local newPos = targetPos + randomDirection + Vector3.new(0, randomHeight, 0)
+    AutoStealConnection = RunService.Heartbeat:Connect(function()
+        if not AutoStealEnabled or not AutoStealTarget or not AutoStealTarget.Character then
+            if AutoStealConnection then AutoStealConnection:Disconnect() end
+            AutoStealConnection = nil
+            return
+        end
+        
+        local targetChar = AutoStealTarget.Character
+        local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
+        local targetRoot = targetHumanoid and targetHumanoid.RootPart
+        local myChar = Player.Character
+        local myRoot = myChar and myChar:FindFirstChildOfClass("Humanoid") and myChar:FindFirstChildOfClass("Humanoid").RootPart
+        
+        if targetRoot and myRoot then
+            -- ГРАВЕЦЬ СЛІДУЄ ЗА ТОБОЮ
+            targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
+            targetRoot.Velocity = myRoot.Velocity
+            targetRoot.RotVelocity = myRoot.RotVelocity
+            
+            if targetHumanoid then
+                targetHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+            end
+        end
+    end)
     
-    -- Телепортуємо гравця
-    targetRoot.CFrame = CFrame.new(newPos)
-    targetRoot.Velocity = Vector3.new(0, 0, 0)
-    targetRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-    
-    print(string.format("Flicked %s %.1f studs away (%.1f feet)", target.Name, distance, distance / 0.3048))
-    
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "FLICK",
-        Text = string.format("%s flung %.0f feet away!", target.Name, distance / 0.3048),
-        Duration = 2
-    })
+    return true
 end
 
--- ========== TP TO BASE (авто-визначення твого учасника) ==========
+local function StopAutoSteal()
+    AutoStealEnabled = false
+    if AutoStealConnection then
+        AutoStealConnection:Disconnect()
+        AutoStealConnection = nil
+    end
+end
+
+-- ========== TP TO BASE ==========
 local function TeleportToBase()
-    local success, result = pcall(function()
+    local success = pcall(function()
         local myPlot = nil
         
-        -- Шукаємо твій участок за OwnerUserId
         for _, plot in ipairs(workspace.Gardens:GetChildren()) do
             if plot:GetAttribute("OwnerUserId") == Player.UserId then
                 myPlot = plot
@@ -68,82 +85,27 @@ local function TeleportToBase()
             })
         end
     end)
-    
-    if not success then
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Error",
-            Text = "Cannot teleport right now",
-            Duration = 2
-        })
-    end
 end
 
--- ========== AUTOSTEAL (механіка крадіжки) ==========
-local function StartAutoSteal(target)
-    if AutoStealConnection then
-        AutoStealConnection:Disconnect()
-        AutoStealConnection = nil
-    end
-    
-    if not target or not target.Character then return false end
-    
-    AutoStealEnabled = true
-    
-    AutoStealConnection = RunService.Heartbeat:Connect(function()
-        if not AutoStealEnabled or not target or not target.Character then
-            if AutoStealConnection then AutoStealConnection:Disconnect() end
-            AutoStealConnection = nil
-            return
-        end
-        
-        local targetChar = target.Character
-        local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-        local targetRoot = targetHumanoid and targetHumanoid.RootPart
-        local myChar = Player.Character
-        local myRoot = myChar and myChar:FindFirstChildOfClass("Humanoid") and myChar:FindFirstChildOfClass("Humanoid").RootPart
-        
-        if targetRoot and myRoot then
-            -- Гравець слідує за тобою (ти крадеш у нього)
-            targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
-            targetRoot.Velocity = myRoot.Velocity
-            
-            -- Блокуємо можливість сісти
-            if targetHumanoid then
-                targetHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-                targetHumanoid.AutoRotate = false
-            end
-        end
-    end)
-    
-    return true
-end
+-- ========== MULTI-FLING (ПОВНІСТЮ З ТВОГО КОДУ, НІЧОГО НЕ МІНЯВ) ==========
+-- Services
+local FlingActive = false
+local FlingSelectedTargets = {}
+local FlingPlayerCheckboxes = {}
+getgenv().OldPos = nil
+getgenv().FPDH = workspace.FallenPartsDestroyHeight
 
-local function StopAutoSteal()
-    AutoStealEnabled = false
-    if AutoStealConnection then
-        AutoStealConnection:Disconnect()
-        AutoStealConnection = nil
-    end
-    
-    -- Відновлюємо налаштування гравця
-    if SelectedTarget and SelectedTarget.Character then
-        local humanoid = SelectedTarget.Character:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-            humanoid.AutoRotate = true
-        end
-    end
-end
-
--- ========== СТВОРЕННЯ GUI ==========
+-- GUI Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AutoStealGUI"
+ScreenGui.Name = "AutoStealFlingGUI"
+ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = game:GetService("CoreGui")
 
+-- Main Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 280, 0, 310)
-MainFrame.Position = UDim2.new(0.5, -140, 0.5, -155)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.Size = UDim2.new(0, 350, 0, 480)
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -240)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
@@ -153,78 +115,582 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
--- Заголовок
+-- Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 35)
+TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleBarCorner = Instance.new("UICorner")
+TitleBarCorner.Parent = TitleBar
+
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-Title.Text = "⚡ AUTOSTEAL + FLICK ⚡"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 14
-Title.Parent = MainFrame
+Title.Size = UDim2.new(1, -35, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "AUTOSTEAL + MULTI-FLING"
+Title.TextColor3 = Color3.fromRGB(255, 80, 80)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 16
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
 
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.Parent = Title
-
--- Close button
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Position = UDim2.new(1, -30, 0, 5)
-CloseBtn.Size = UDim2.new(0, 25, 0, 25)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 14
-CloseBtn.Parent = Title
+-- Close Button
+local CloseButton = Instance.new("TextButton")
+CloseButton.Position = UDim2.new(1, -30, 0, 5)
+CloseButton.Size = UDim2.new(0, 25, 0, 25)
+CloseButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Font = Enum.Font.SourceSansBold
+CloseButton.TextSize = 16
+CloseButton.Parent = TitleBar
 
 local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 6)
-CloseCorner.Parent = CloseBtn
+CloseCorner.Parent = CloseButton
 
--- Вибір гравця
-local TargetLabel = Instance.new("TextLabel")
-TargetLabel.Position = UDim2.new(0, 10, 0, 50)
-TargetLabel.Size = UDim2.new(1, -20, 0, 20)
-TargetLabel.BackgroundTransparency = 1
-TargetLabel.Text = "Select Target:"
-TargetLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-TargetLabel.Font = Enum.Font.Gotham
-TargetLabel.TextSize = 12
-TargetLabel.TextXAlignment = Enum.TextXAlignment.Left
-TargetLabel.Parent = MainFrame
+-- ========== AUTOSTEAL СЕКЦІЯ ==========
+local AutoStealSection = Instance.new("Frame")
+AutoStealSection.Position = UDim2.new(0, 10, 0, 45)
+AutoStealSection.Size = UDim2.new(1, -20, 0, 80)
+AutoStealSection.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+AutoStealSection.BorderSizePixel = 0
+AutoStealSection.Parent = MainFrame
 
-local TargetDropdown = Instance.new("TextButton")
-TargetDropdown.Position = UDim2.new(0, 10, 0, 72)
-TargetDropdown.Size = UDim2.new(1, -20, 0, 32)
-TargetDropdown.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-TargetDropdown.Text = "Click to select player"
-TargetDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-TargetDropdown.Font = Enum.Font.Gotham
-TargetDropdown.TextSize = 12
-TargetDropdown.Parent = MainFrame
+local SectionCorner = Instance.new("UICorner")
+SectionCorner.CornerRadius = UDim.new(0, 8)
+SectionCorner.Parent = AutoStealSection
+
+local AutoStealTitle = Instance.new("TextLabel")
+AutoStealTitle.Position = UDim2.new(0, 10, 0, 5)
+AutoStealTitle.Size = UDim2.new(1, -20, 0, 20)
+AutoStealTitle.BackgroundTransparency = 1
+AutoStealTitle.Text = "⚡ AUTOSTEAL (grief player)"
+AutoStealTitle.TextColor3 = Color3.fromRGB(100, 200, 150)
+AutoStealTitle.Font = Enum.Font.SourceSansBold
+AutoStealTitle.TextSize = 12
+AutoStealTitle.TextXAlignment = Enum.TextXAlignment.Left
+AutoStealTitle.Parent = AutoStealSection
+
+-- Вибір гравця для AutoSteal
+local AutoStealDropdown = Instance.new("TextButton")
+AutoStealDropdown.Position = UDim2.new(0, 10, 0, 28)
+AutoStealDropdown.Size = UDim2.new(0.6, -10, 0, 30)
+AutoStealDropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+AutoStealDropdown.Text = "Select player"
+AutoStealDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoStealDropdown.Font = Enum.Font.SourceSans
+AutoStealDropdown.TextSize = 12
+AutoStealDropdown.Parent = AutoStealSection
 
 local DropdownCorner = Instance.new("UICorner")
-DropdownCorner.CornerRadius = UDim.new(0, 6)
-DropdownCorner.Parent = TargetDropdown
+DropdownCorner.CornerRadius = UDim.new(0, 5)
+DropdownCorner.Parent = AutoStealDropdown
 
--- Список гравців
-local PlayerListFrame = Instance.new("ScrollingFrame")
-PlayerListFrame.Position = UDim2.new(0, 10, 0, 104)
-PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
-PlayerListFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-PlayerListFrame.BorderSizePixel = 0
-PlayerListFrame.Visible = false
-PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-PlayerListFrame.ScrollBarThickness = 4
-PlayerListFrame.Parent = MainFrame
+-- Галочка AutoSteal
+local AutoStealCheckbox = Instance.new("TextButton")
+AutoStealCheckbox.Position = UDim2.new(0.65, 0, 0, 28)
+AutoStealCheckbox.Size = UDim2.new(0, 22, 0, 22)
+AutoStealCheckbox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+AutoStealCheckbox.BorderSizePixel = 0
+AutoStealCheckbox.Text = ""
+AutoStealCheckbox.Parent = AutoStealSection
+
+local CheckCorner = Instance.new("UICorner")
+CheckCorner.CornerRadius = UDim.new(0, 4)
+CheckCorner.Parent = AutoStealCheckbox
+
+local AutoStealCheckmark = Instance.new("TextLabel")
+AutoStealCheckmark.Size = UDim2.new(1, 0, 1, 0)
+AutoStealCheckmark.BackgroundTransparency = 1
+AutoStealCheckmark.Text = "✓"
+AutoStealCheckmark.TextColor3 = Color3.fromRGB(0, 255, 0)
+AutoStealCheckmark.TextSize = 14
+AutoStealCheckmark.Font = Enum.Font.SourceSansBold
+AutoStealCheckmark.Visible = false
+AutoStealCheckmark.Parent = AutoStealCheckbox
+
+local AutoStealStatus = Instance.new("TextLabel")
+AutoStealStatus.Position = UDim2.new(0.65, 30, 0, 28)
+AutoStealStatus.Size = UDim2.new(0.35, -40, 0, 22)
+AutoStealStatus.BackgroundTransparency = 1
+AutoStealStatus.Text = "OFF"
+AutoStealStatus.TextColor3 = Color3.fromRGB(200, 50, 50)
+AutoStealStatus.Font = Enum.Font.SourceSansBold
+AutoStealStatus.TextSize = 11
+AutoStealStatus.TextXAlignment = Enum.TextXAlignment.Left
+AutoStealStatus.Parent = AutoStealSection
+
+-- Список гравців для AutoSteal
+local AutoStealPlayerList = Instance.new("ScrollingFrame")
+AutoStealPlayerList.Position = UDim2.new(0, 10, 0, 58)
+AutoStealPlayerList.Size = UDim2.new(0.6, -10, 0, 0)
+AutoStealPlayerList.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+AutoStealPlayerList.BorderSizePixel = 0
+AutoStealPlayerList.Visible = false
+AutoStealPlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+AutoStealPlayerList.ScrollBarThickness = 4
+AutoStealPlayerList.Parent = AutoStealSection
 
 local ListCorner = Instance.new("UICorner")
-ListCorner.Parent = PlayerListFrame
+ListCorner.Parent = AutoStealPlayerList
 
--- Оновлення списку гравців
-local function UpdatePlayerList()
-    for _, child in pairs(PlayerListFrame:GetChildren()) do
-        if child:IsA("Frame") then child:Destroy() end
+-- ========== FLING СЕКЦІЯ ==========
+local FlingSection = Instance.new("Frame")
+FlingSection.Position = UDim2.new(0, 10, 0, 135)
+FlingSection.Size = UDim2.new(1, -20, 0, 250)
+FlingSection.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+FlingSection.BorderSizePixel = 0
+FlingSection.Parent = MainFrame
+
+local FlingCorner = Instance.new("UICorner")
+FlingCorner.CornerRadius = UDim.new(0, 8)
+FlingCorner.Parent = FlingSection
+
+local FlingTitle = Instance.new("TextLabel")
+FlingTitle.Position = UDim2.new(0, 10, 0, 5)
+FlingTitle.Size = UDim2.new(1, -20, 0, 20)
+FlingTitle.BackgroundTransparency = 1
+FlingTitle.Text = "💥 MULTI-FLING"
+FlingTitle.TextColor3 = Color3.fromRGB(255, 100, 100)
+FlingTitle.Font = Enum.Font.SourceSansBold
+FlingTitle.TextSize = 12
+FlingTitle.TextXAlignment = Enum.TextXAlignment.Left
+FlingTitle.Parent = FlingSection
+
+-- Player Selection Frame для FLING
+local SelectionFrame = Instance.new("Frame")
+SelectionFrame.Position = UDim2.new(0, 5, 0, 28)
+SelectionFrame.Size = UDim2.new(1, -10, 0, 140)
+SelectionFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+SelectionFrame.BorderSizePixel = 0
+SelectionFrame.Parent = FlingSection
+
+local SelectionCorner = Instance.new("UICorner")
+SelectionCorner.CornerRadius = UDim.new(0, 6)
+SelectionCorner.Parent = SelectionFrame
+
+-- Player List ScrollFrame для FLING
+local PlayerScrollFrame = Instance.new("ScrollingFrame")
+PlayerScrollFrame.Position = UDim2.new(0, 5, 0, 5)
+PlayerScrollFrame.Size = UDim2.new(1, -10, 1, -10)
+PlayerScrollFrame.BackgroundTransparency = 1
+PlayerScrollFrame.BorderSizePixel = 0
+PlayerScrollFrame.ScrollBarThickness = 6
+PlayerScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+PlayerScrollFrame.Parent = SelectionFrame
+
+-- Start Fling Button
+local StartButton = Instance.new("TextButton")
+StartButton.Position = UDim2.new(0, 5, 0, 175)
+StartButton.Size = UDim2.new(0.48, -5, 0, 35)
+StartButton.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+StartButton.BorderSizePixel = 0
+StartButton.Text = "START FLING"
+StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+StartButton.Font = Enum.Font.SourceSansBold
+StartButton.TextSize = 14
+StartButton.Parent = FlingSection
+
+local StartCorner = Instance.new("UICorner")
+StartCorner.CornerRadius = UDim.new(0, 6)
+StartCorner.Parent = StartButton
+
+-- Stop Fling Button
+local StopButton = Instance.new("TextButton")
+StopButton.Position = UDim2.new(0.52, 0, 0, 175)
+StopButton.Size = UDim2.new(0.48, -5, 0, 35)
+StopButton.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+StopButton.BorderSizePixel = 0
+StopButton.Text = "STOP FLING"
+StopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+StopButton.Font = Enum.Font.SourceSansBold
+StopButton.TextSize = 14
+StopButton.Parent = FlingSection
+
+local StopCorner = Instance.new("UICorner")
+StopCorner.CornerRadius = UDim.new(0, 6)
+StopCorner.Parent = StopButton
+
+-- Select/Deselect Buttons
+local SelectAllButton = Instance.new("TextButton")
+SelectAllButton.Position = UDim2.new(0, 5, 0, 215)
+SelectAllButton.Size = UDim2.new(0.48, -5, 0, 25)
+SelectAllButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SelectAllButton.BorderSizePixel = 0
+SelectAllButton.Text = "SELECT ALL"
+SelectAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SelectAllButton.Font = Enum.Font.SourceSans
+SelectAllButton.TextSize = 12
+SelectAllButton.Parent = FlingSection
+
+local SelectAllCorner = Instance.new("UICorner")
+SelectAllCorner.CornerRadius = UDim.new(0, 5)
+SelectAllCorner.Parent = SelectAllButton
+
+local DeselectAllButton = Instance.new("TextButton")
+DeselectAllButton.Position = UDim2.new(0.52, 0, 0, 215)
+DeselectAllButton.Size = UDim2.new(0.48, -5, 0, 25)
+DeselectAllButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+DeselectAllButton.BorderSizePixel = 0
+DeselectAllButton.Text = "DESELECT ALL"
+DeselectAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+DeselectAllButton.Font = Enum.Font.SourceSans
+DeselectAllButton.TextSize = 12
+DeselectAllButton.Parent = FlingSection
+
+local DeselectCorner = Instance.new("UICorner")
+DeselectCorner.CornerRadius = UDim.new(0, 5)
+DeselectCorner.Parent = DeselectAllButton
+
+-- Fling Status Label
+local FlingStatusLabel = Instance.new("TextLabel")
+FlingStatusLabel.Position = UDim2.new(0, 5, 0, 245)
+FlingStatusLabel.Size = UDim2.new(1, -10, 0, 20)
+FlingStatusLabel.BackgroundTransparency = 1
+FlingStatusLabel.Text = "0 target(s) selected"
+FlingStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlingStatusLabel.Font = Enum.Font.SourceSans
+FlingStatusLabel.TextSize = 11
+FlingStatusLabel.Parent = FlingSection
+
+-- ========== TP TO BASE BUTTON ==========
+local TPButton = Instance.new("TextButton")
+TPButton.Position = UDim2.new(0, 10, 0, 395)
+TPButton.Size = UDim2.new(1, -20, 0, 35)
+TPButton.BackgroundColor3 = Color3.fromRGB(100, 80, 200)
+TPButton.BorderSizePixel = 0
+TPButton.Text = "🏠 TP TO BASE 🏠"
+TPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TPButton.Font = Enum.Font.SourceSansBold
+TPButton.TextSize = 14
+TPButton.Parent = MainFrame
+
+local TPCorner = Instance.new("UICorner")
+TPCorner.CornerRadius = UDim.new(0, 8)
+TPCorner.Parent = TPButton
+
+-- ========== ФУНКЦІЇ ДЛЯ FLING (ПОВНІСТЮ З ТВОГО КОДУ) ==========
+local function RefreshFlingPlayerList()
+    for _, child in pairs(PlayerScrollFrame:GetChildren()) do
+        child:Destroy()
+    end
+    FlingPlayerCheckboxes = {}
+    
+    local PlayerList = Players:GetPlayers()
+    table.sort(PlayerList, function(a, b) return a.Name:lower() < b.Name:lower() end)
+    
+    local yPosition = 5
+    for _, player in ipairs(PlayerList) do
+        if player ~= Player then
+            local PlayerEntry = Instance.new("Frame")
+            PlayerEntry.Size = UDim2.new(1, -10, 0, 30)
+            PlayerEntry.Position = UDim2.new(0, 5, 0, yPosition)
+            PlayerEntry.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            PlayerEntry.BorderSizePixel = 0
+            PlayerEntry.Parent = PlayerScrollFrame
+            
+            local Checkbox = Instance.new("TextButton")
+            Checkbox.Size = UDim2.new(0, 24, 0, 24)
+            Checkbox.Position = UDim2.new(0, 3, 0.5, -12)
+            Checkbox.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            Checkbox.BorderSizePixel = 0
+            Checkbox.Text = ""
+            Checkbox.Parent = PlayerEntry
+            
+            local Checkmark = Instance.new("TextLabel")
+            Checkmark.Size = UDim2.new(1, 0, 1, 0)
+            Checkmark.BackgroundTransparency = 1
+            Checkmark.Text = "✓"
+            Checkmark.TextColor3 = Color3.fromRGB(0, 255, 0)
+            Checkmark.TextSize = 18
+            Checkmark.Font = Enum.Font.SourceSansBold
+            Checkmark.Visible = FlingSelectedTargets[player.Name] ~= nil
+            Checkmark.Parent = Checkbox
+            
+            local NameLabel = Instance.new("TextLabel")
+            NameLabel.Size = UDim2.new(1, -35, 1, 0)
+            NameLabel.Position = UDim2.new(0, 30, 0, 0)
+            NameLabel.BackgroundTransparency = 1
+            NameLabel.Text = player.Name
+            NameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            NameLabel.TextSize = 14
+            NameLabel.Font = Enum.Font.SourceSans
+            NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            NameLabel.Parent = PlayerEntry
+            
+            local ClickArea = Instance.new("TextButton")
+            ClickArea.Size = UDim2.new(1, 0, 1, 0)
+            ClickArea.BackgroundTransparency = 1
+            ClickArea.Text = ""
+            ClickArea.ZIndex = 2
+            ClickArea.Parent = PlayerEntry
+            
+            ClickArea.MouseButton1Click:Connect(function()
+                if FlingSelectedTargets[player.Name] then
+                    FlingSelectedTargets[player.Name] = nil
+                    Checkmark.Visible = false
+                else
+                    FlingSelectedTargets[player.Name] = player
+                    Checkmark.Visible = true
+                end
+                UpdateFlingStatus()
+            end)
+            
+            FlingPlayerCheckboxes[player.Name] = {
+                Entry = PlayerEntry,
+                Checkmark = Checkmark
+            }
+            
+            yPosition = yPosition + 35
+        end
+    end
+    
+    PlayerScrollFrame.CanvasSize = UDim2.new(0, 0, 0, yPosition + 5)
+end
+
+local function CountFlingTargets()
+    local count = 0
+    for _ in pairs(FlingSelectedTargets) do count = count + 1 end
+    return count
+end
+
+local function UpdateFlingStatus()
+    local count = CountFlingTargets()
+    if FlingActive then
+        FlingStatusLabel.Text = "Flinging " .. count .. " target(s)"
+        FlingStatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+    else
+        FlingStatusLabel.Text = count .. " target(s) selected"
+        FlingStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end
+end
+
+local function ToggleAllFlingPlayers(select)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Player then
+            local checkboxData = FlingPlayerCheckboxes[player.Name]
+            if checkboxData then
+                if select then
+                    FlingSelectedTargets[player.Name] = player
+                    checkboxData.Checkmark.Visible = true
+                else
+                    FlingSelectedTargets[player.Name] = nil
+                    checkboxData.Checkmark.Visible = false
+                end
+            end
+        end
+    end
+    UpdateFlingStatus()
+end
+
+local function Message(Title, Text, Time)
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = Title,
+        Text = Text,
+        Duration = Time or 5
+    })
+end
+
+-- FLING FUNCTION (З ТВОГО КОДУ, НІЧОГО НЕ МІНЯВ)
+local function SkidFling(TargetPlayer)
+    local Character = Player.Character
+    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart = Humanoid and Humanoid.RootPart
+    local TCharacter = TargetPlayer.Character
+    if not TCharacter then return end
+    
+    local THumanoid
+    local TRootPart
+    local THead
+    local Accessory
+    local Handle
+    if TCharacter:FindFirstChildOfClass("Humanoid") then
+        THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+    end
+    if THumanoid and THumanoid.RootPart then
+        TRootPart = THumanoid.RootPart
+    end
+    if TCharacter:FindFirstChild("Head") then
+        THead = TCharacter.Head
+    end
+    if TCharacter:FindFirstChildOfClass("Accessory") then
+        Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+    end
+    if Accessory and Accessory:FindFirstChild("Handle") then
+        Handle = Accessory.Handle
+    end
+    if Character and Humanoid and RootPart then
+        if RootPart.Velocity.Magnitude < 50 then
+            getgenv().OldPos = RootPart.CFrame
+        end
+        
+        if THumanoid and THumanoid.Sit then
+            return Message("Error", TargetPlayer.Name .. " is sitting", 2)
+        end
+        
+        if THead then
+            workspace.CurrentCamera.CameraSubject = THead
+        elseif Handle then
+            workspace.CurrentCamera.CameraSubject = Handle
+        elseif THumanoid and TRootPart then
+            workspace.CurrentCamera.CameraSubject = THumanoid
+        end
+        
+        if not TCharacter:FindFirstChildWhichIsA("BasePart") then
+            return
+        end
+        
+        local FPos = function(BasePart, Pos, Ang)
+            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+            RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end
+        
+        local SFBasePart = function(BasePart)
+            local TimeToWait = 2
+            local Time = tick()
+            local Angle = 0
+            repeat
+                if RootPart and THumanoid then
+                    if BasePart.Velocity.Magnitude < 50 then
+                        Angle = Angle + 100
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                    else
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                    end
+                end
+            until Time + TimeToWait < tick() or not FlingActive
+        end
+        
+        workspace.FallenPartsDestroyHeight = 0/0
+        
+        local BV = Instance.new("BodyVelocity")
+        BV.Parent = RootPart
+        BV.Velocity = Vector3.new(0, 0, 0)
+        BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        
+        if TRootPart then
+            SFBasePart(TRootPart)
+        elseif THead then
+            SFBasePart(THead)
+        elseif Handle then
+            SFBasePart(Handle)
+        else
+            return Message("Error", TargetPlayer.Name .. " has no valid parts", 2)
+        end
+        
+        BV:Destroy()
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Sealed, true)
+        workspace.CurrentCamera.CameraSubject = Humanoid
+        
+        if getgenv().OldPos then
+            repeat
+                RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
+                Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
+                Humanoid:ChangeState("GettingUp")
+                for _, part in pairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+                    end
+                end
+                task.wait()
+            until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
+            workspace.FallenPartsDestroyHeight = getgenv().FPDH
+        end
+    else
+        return Message("Error", "Your character is not ready", 2)
+    end
+end
+
+local function StartFling()
+    if FlingActive then return end
+    
+    local count = CountFlingTargets()
+    if count == 0 then
+        FlingStatusLabel.Text = "No targets selected!"
+        wait(1)
+        FlingStatusLabel.Text = "Select targets to fling"
+        return
+    end
+    
+    FlingActive = true
+    UpdateFlingStatus()
+    Message("Started", "Flinging " .. count .. " targets", 2)
+    
+    spawn(function()
+        while FlingActive do
+            local validTargets = {}
+            
+            for name, player in pairs(FlingSelectedTargets) do
+                if player and player.Parent then
+                    validTargets[name] = player
+                else
+                    FlingSelectedTargets[name] = nil
+                    local checkbox = FlingPlayerCheckboxes[name]
+                    if checkbox then
+                        checkbox.Checkmark.Visible = false
+                    end
+                end
+            end
+            
+            for _, player in pairs(validTargets) do
+                if FlingActive then
+                    SkidFling(player)
+                    wait(0.1)
+                else
+                    break
+                end
+            end
+            
+            UpdateFlingStatus()
+            wait(0.5)
+        end
+    end)
+end
+
+local function StopFling()
+    if not FlingActive then return end
+    FlingActive = false
+    UpdateFlingStatus()
+    Message("Stopped", "Fling has been stopped", 2)
+end
+
+-- ========== AUTOSTEAL LIST LOGIC ==========
+local function UpdateAutoStealPlayerList()
+    for _, child in pairs(AutoStealPlayerList:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
     end
     
     local yPos = 5
@@ -240,202 +706,102 @@ local function UpdatePlayerList()
     
     for _, plr in ipairs(playersList) do
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, -10, 0, 30)
+        btn.Size = UDim2.new(1, -10, 0, 28)
         btn.Position = UDim2.new(0, 5, 0, yPos)
-        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+        btn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
         btn.Text = plr.Name
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 12
-        btn.Parent = PlayerListFrame
+        btn.Font = Enum.Font.SourceSans
+        btn.TextSize = 11
+        btn.Parent = AutoStealPlayerList
         
         local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 5)
+        btnCorner.CornerRadius = UDim.new(0, 4)
         btnCorner.Parent = btn
         
         btn.MouseButton1Click:Connect(function()
-            SelectedTarget = plr
-            TargetDropdown.Text = plr.Name
-            PlayerListFrame.Visible = false
-            PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
+            AutoStealTarget = plr
+            AutoStealDropdown.Text = plr.Name
+            AutoStealPlayerList.Visible = false
+            AutoStealPlayerList.Size = UDim2.new(0.6, -10, 0, 0)
         end)
         
-        yPos = yPos + 35
+        yPos = yPos + 33
     end
     
-    PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, yPos + 5)
+    AutoStealPlayerList.CanvasSize = UDim2.new(0, 0, 0, yPos + 5)
 end
 
--- Показати/сховати список
-TargetDropdown.MouseButton1Click:Connect(function()
-    if PlayerListFrame.Visible then
-        PlayerListFrame.Visible = false
-        PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
+AutoStealDropdown.MouseButton1Click:Connect(function()
+    if AutoStealPlayerList.Visible then
+        AutoStealPlayerList.Visible = false
+        AutoStealPlayerList.Size = UDim2.new(0.6, -10, 0, 0)
     else
-        UpdatePlayerList()
-        PlayerListFrame.Visible = true
-        PlayerListFrame.Size = UDim2.new(1, -20, 0, 120)
+        UpdateAutoStealPlayerList()
+        AutoStealPlayerList.Visible = true
+        AutoStealPlayerList.Size = UDim2.new(0.6, -10, 0, 80)
     end
 end)
 
--- ========== ГАЛОЧКА AUTOSTEAL ==========
-local AutoStealCheckbox = Instance.new("TextButton")
-AutoStealCheckbox.Position = UDim2.new(0, 10, 0, 155)
-AutoStealCheckbox.Size = UDim2.new(0, 22, 0, 22)
-AutoStealCheckbox.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-AutoStealCheckbox.BorderSizePixel = 0
-AutoStealCheckbox.Text = ""
-AutoStealCheckbox.Parent = MainFrame
-
-local CheckCorner = Instance.new("UICorner")
-CheckCorner.CornerRadius = UDim.new(0, 4)
-CheckCorner.Parent = AutoStealCheckbox
-
-local Checkmark = Instance.new("TextLabel")
-Checkmark.Size = UDim2.new(1, 0, 1, 0)
-Checkmark.BackgroundTransparency = 1
-Checkmark.Text = "✓"
-Checkmark.TextColor3 = Color3.fromRGB(0, 255, 0)
-Checkmark.TextSize = 14
-Checkmark.Font = Enum.Font.GothamBold
-Checkmark.Visible = false
-Checkmark.Parent = AutoStealCheckbox
-
-local AutoStealLabel = Instance.new("TextLabel")
-AutoStealLabel.Position = UDim2.new(0, 40, 0, 155)
-AutoStealLabel.Size = UDim2.new(1, -50, 0, 22)
-AutoStealLabel.BackgroundTransparency = 1
-AutoStealLabel.Text = "AUTOSTEAL (grief player)"
-AutoStealLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-AutoStealLabel.Font = Enum.Font.Gotham
-AutoStealLabel.TextSize = 13
-AutoStealLabel.TextXAlignment = Enum.TextXAlignment.Left
-AutoStealLabel.Parent = MainFrame
-
--- ========== КНОПКА FLICK ==========
-local FlickButton = Instance.new("TextButton")
-FlickButton.Position = UDim2.new(0, 10, 0, 190)
-FlickButton.Size = UDim2.new(1, -20, 0, 40)
-FlickButton.BackgroundColor3 = Color3.fromRGB(200, 80, 0)
-FlickButton.Text = "💥 FLICK (100 feet away) 💥"
-FlickButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-FlickButton.Font = Enum.Font.GothamBold
-FlickButton.TextSize = 12
-FlickButton.Parent = MainFrame
-
-local FlickCorner = Instance.new("UICorner")
-FlickCorner.CornerRadius = UDim.new(0, 8)
-FlickCorner.Parent = FlickButton
-
--- ========== КНОПКА TP TO BASE ==========
-local TPButton = Instance.new("TextButton")
-TPButton.Position = UDim2.new(0, 10, 0, 240)
-TPButton.Size = UDim2.new(1, -20, 0, 40)
-TPButton.BackgroundColor3 = Color3.fromRGB(100, 80, 200)
-TPButton.Text = "🏠 TP TO BASE 🏠"
-TPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-TPButton.Font = Enum.Font.GothamBold
-TPButton.TextSize = 14
-TPButton.Parent = MainFrame
-
-local TPCorner = Instance.new("UICorner")
-TPCorner.CornerRadius = UDim.new(0, 8)
-TPCorner.Parent = TPButton
-
--- ========== ЛОГІКА ==========
 AutoStealCheckbox.MouseButton1Click:Connect(function()
     if AutoStealEnabled then
         StopAutoSteal()
-        Checkmark.Visible = false
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "AutoSteal",
-            Text = "Stopped",
-            Duration = 1
-        })
+        AutoStealCheckmark.Visible = false
+        AutoStealStatus.Text = "OFF"
+        AutoStealStatus.TextColor3 = Color3.fromRGB(200, 50, 50)
     else
-        if not SelectedTarget then
-            game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = "Error",
-                Text = "Select a target first!",
-                Duration = 2
-            })
+        if not AutoStealTarget then
+            Message("Error", "Select a target first!", 2)
             return
         end
-        StartAutoSteal(SelectedTarget)
-        Checkmark.Visible = true
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "AutoSteal",
-            Text = "Stealing from " .. SelectedTarget.Name,
-            Duration = 2
-        })
+        StartAutoSteal(AutoStealTarget)
+        AutoStealCheckmark.Visible = true
+        AutoStealStatus.Text = "ON - " .. AutoStealTarget.Name
+        AutoStealStatus.TextColor3 = Color3.fromRGB(0, 200, 0)
     end
 end)
 
-FlickButton.MouseButton1Click:Connect(function()
-    if not SelectedTarget then
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Error",
-            Text = "Select a target first!",
-            Duration = 2
-        })
-        return
-    end
-    
-    -- Якщо автостил включений - вимикаємо на час фліку
-    local wasEnabled = AutoStealEnabled
-    if wasEnabled then
-        StopAutoSteal()
-        Checkmark.Visible = false
-    end
-    
-    -- Флікаємо гравця
-    FlickPlayerAway(SelectedTarget)
-    
-    -- Затримка
-    task.wait(0.5)
-    
-    -- Вмикаємо знову
-    if wasEnabled then
-        StartAutoSteal(SelectedTarget)
-        Checkmark.Visible = true
-    end
-end)
-
+-- ========== FLING BUTTONS ==========
+StartButton.MouseButton1Click:Connect(StartFling)
+StopButton.MouseButton1Click:Connect(StopFling)
+SelectAllButton.MouseButton1Click:Connect(function() ToggleAllFlingPlayers(true) end)
+DeselectAllButton.MouseButton1Click:Connect(function() ToggleAllFlingPlayers(false) end)
 TPButton.MouseButton1Click:Connect(TeleportToBase)
 
 -- Close button
-CloseBtn.MouseButton1Click:Connect(function()
+CloseButton.MouseButton1Click:Connect(function()
+    StopFling()
     StopAutoSteal()
     ScreenGui:Destroy()
 end)
 
--- Оновлення при видаленні гравця
-Players.PlayerRemoving:Connect(function(plr)
-    if SelectedTarget == plr then
-        SelectedTarget = nil
-        TargetDropdown.Text = "Click to select player"
+-- Handle player joining/leaving for FLING
+Players.PlayerAdded:Connect(RefreshFlingPlayerList)
+Players.PlayerRemoving:Connect(function(player)
+    if FlingSelectedTargets[player.Name] then
+        FlingSelectedTargets[player.Name] = nil
+    end
+    if AutoStealTarget == player then
+        AutoStealTarget = nil
+        AutoStealDropdown.Text = "Select player"
         if AutoStealEnabled then
             StopAutoSteal()
-            Checkmark.Visible = false
+            AutoStealCheckmark.Visible = false
+            AutoStealStatus.Text = "OFF"
+            AutoStealStatus.TextColor3 = Color3.fromRGB(200, 50, 50)
         end
     end
+    RefreshFlingPlayerList()
+    UpdateFlingStatus()
+    UpdateAutoStealPlayerList()
 end)
 
--- При зміні персонажа гравця
-Player.CharacterAdded:Connect(function()
-    if AutoStealEnabled and SelectedTarget then
-        StopAutoSteal()
-        task.wait(0.5)
-        StartAutoSteal(SelectedTarget)
-    end
-end)
+-- Initialize FLING
+RefreshFlingPlayerList()
+UpdateFlingStatus()
 
--- Ініціалізація
-UpdatePlayerList()
+-- Initialize AUTOSTEAL
+UpdateAutoStealPlayerList()
 
--- Повідомлення
-game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "Loaded",
-    Text = "AutoSteal + Flick (100ft) + TP Base Ready!",
-    Duration = 2
-})
+-- Success message
+Message("Loaded", "AUTOSTEAL + MULTI-FLING + TP BASE Loaded!", 3)
