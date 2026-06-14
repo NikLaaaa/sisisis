@@ -1,4 +1,4 @@
--- ПРОСТИЙ GUI: AUTOSTEAL + FLICK (100 футів у випадкову сторону)
+-- ПРОСТИЙ GUI: AUTOSTEAL + FLICK (100 ФУТІВ) + TP TO BASE
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Player = Players.LocalPlayer
@@ -40,8 +40,45 @@ local function FlickPlayerAway(target)
     })
 end
 
--- ========== AUTOSTEAL (механіка з першого скрипта - ти крадеш у них) ==========
--- Це функція яка змушує гравця слідувати за тобою (ти "крадеш" у нього)
+-- ========== TP TO BASE (авто-визначення твого учасника) ==========
+local function TeleportToBase()
+    local success, result = pcall(function()
+        local myPlot = nil
+        
+        -- Шукаємо твій участок за OwnerUserId
+        for _, plot in ipairs(workspace.Gardens:GetChildren()) do
+            if plot:GetAttribute("OwnerUserId") == Player.UserId then
+                myPlot = plot
+                break
+            end
+        end
+        
+        if myPlot and myPlot.PlotSizeReference then
+            Player.Character:PivotTo(myPlot.PlotSizeReference.CFrame + Vector3.new(0, 100, 0))
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "TP",
+                Text = "Teleported to your base!",
+                Duration = 2
+            })
+        else
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "Error",
+                Text = "Your plot not found!",
+                Duration = 2
+            })
+        end
+    end)
+    
+    if not success then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Error",
+            Text = "Cannot teleport right now",
+            Duration = 2
+        })
+    end
+end
+
+-- ========== AUTOSTEAL (механіка крадіжки) ==========
 local function StartAutoSteal(target)
     if AutoStealConnection then
         AutoStealConnection:Disconnect()
@@ -66,7 +103,7 @@ local function StartAutoSteal(target)
         local myRoot = myChar and myChar:FindFirstChildOfClass("Humanoid") and myChar:FindFirstChildOfClass("Humanoid").RootPart
         
         if targetRoot and myRoot then
-            -- ГРАВЕЦЬ СЛІДУЄ ЗА ТОБОЮ (ти крадеш у нього)
+            -- Гравець слідує за тобою (ти крадеш у нього)
             targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
             targetRoot.Velocity = myRoot.Velocity
             
@@ -104,8 +141,8 @@ ScreenGui.Name = "AutoStealGUI"
 ScreenGui.Parent = game:GetService("CoreGui")
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 280, 0, 250)
-MainFrame.Position = UDim2.new(0.5, -140, 0.5, -125)
+MainFrame.Size = UDim2.new(0, 280, 0, 310)
+MainFrame.Position = UDim2.new(0.5, -140, 0.5, -155)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -290,6 +327,21 @@ local FlickCorner = Instance.new("UICorner")
 FlickCorner.CornerRadius = UDim.new(0, 8)
 FlickCorner.Parent = FlickButton
 
+-- ========== КНОПКА TP TO BASE ==========
+local TPButton = Instance.new("TextButton")
+TPButton.Position = UDim2.new(0, 10, 0, 240)
+TPButton.Size = UDim2.new(1, -20, 0, 40)
+TPButton.BackgroundColor3 = Color3.fromRGB(100, 80, 200)
+TPButton.Text = "🏠 TP TO BASE 🏠"
+TPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TPButton.Font = Enum.Font.GothamBold
+TPButton.TextSize = 14
+TPButton.Parent = MainFrame
+
+local TPCorner = Instance.new("UICorner")
+TPCorner.CornerRadius = UDim.new(0, 8)
+TPCorner.Parent = TPButton
+
 -- ========== ЛОГІКА ==========
 AutoStealCheckbox.MouseButton1Click:Connect(function()
     if AutoStealEnabled then
@@ -349,6 +401,8 @@ FlickButton.MouseButton1Click:Connect(function()
     end
 end)
 
+TPButton.MouseButton1Click:Connect(TeleportToBase)
+
 -- Close button
 CloseBtn.MouseButton1Click:Connect(function()
     StopAutoSteal()
@@ -382,6 +436,6 @@ UpdatePlayerList()
 -- Повідомлення
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Loaded",
-    Text = "AutoSteal + Flick (100ft) Ready!",
+    Text = "AutoSteal + Flick (100ft) + TP Base Ready!",
     Duration = 2
 })
