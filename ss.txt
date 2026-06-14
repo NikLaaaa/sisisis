@@ -1,43 +1,61 @@
--- ПРОСТИЙ GUI: АВТОСТИЛ + ФЛІК + СПІД + ТП
+-- ПРОСТИЙ GUI: AUTOSTEAL + FLICK (100 футів у випадкову сторону)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Player = Players.LocalPlayer
 
 -- ========== ЗМІННІ ==========
-local AutoStyleEnabled = false
-local FlickEnabled = false
-local AutoStyleConnections = {}
-local PlayerSpeed = 16
+local AutoStealEnabled = false
 local SelectedTarget = nil
+local AutoStealConnection = nil
 
--- ========== ФУНКЦІЯ ФЛІКУ (телепорт до тебе) ==========
-local function FlickPlayerToMe(target)
+-- ========== ФУНКЦІЯ ФЛІКУ (на 100 футів у випадкову сторону) ==========
+local function FlickPlayerAway(target)
     if not target or not target.Character then return end
     
     local targetRoot = target.Character:FindFirstChild("Humanoid") and target.Character.Humanoid.RootPart
-    local myChar = Player.Character
-    local myRoot = myChar and myChar:FindFirstChild("Humanoid") and myChar.Humanoid.RootPart
+    if not targetRoot then return end
     
-    if targetRoot and myRoot then
-        -- Телепортуємо гравця до мене
-        targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
-        targetRoot.Velocity = Vector3.new(0, 0, 0)
-        
-        -- Невелике затримання, щоб він не втік
-        task.wait(0.1)
-        targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
-        
-        print("Flicked " .. target.Name .. " to you!")
-    end
+    -- Випадковий кут (0-360 градусів)
+    local randomAngle = math.random() * math.pi * 2
+    -- 100 футів = ~30.48 студій (1 фут = 0.3048 студій)
+    local distance = 100 * 0.3048  -- ~30.48 студій
+    local randomDirection = Vector3.new(math.cos(randomAngle), 0, math.sin(randomAngle)) * distance
+    local randomHeight = math.random(20, 50)  -- Додаткова висота
+    
+    -- Отримуємо позицію гравця
+    local targetPos = targetRoot.Position
+    local newPos = targetPos + randomDirection + Vector3.new(0, randomHeight, 0)
+    
+    -- Телепортуємо гравця
+    targetRoot.CFrame = CFrame.new(newPos)
+    targetRoot.Velocity = Vector3.new(0, 0, 0)
+    targetRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    
+    print(string.format("Flicked %s %.1f studs away (%.1f feet)", target.Name, distance, distance / 0.3048))
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "FLICK",
+        Text = string.format("%s flung %.0f feet away!", target.Name, distance / 0.3048),
+        Duration = 2
+    })
 end
 
--- ========== АВТОСТИЛ (механіка з першого скрипта) ==========
-local function ApplyAutoStyle(target)
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not AutoStyleEnabled or not target or not target.Character then
-            if connection then connection:Disconnect() end
+-- ========== AUTOSTEAL (механіка з першого скрипта - ти крадеш у них) ==========
+-- Це функція яка змушує гравця слідувати за тобою (ти "крадеш" у нього)
+local function StartAutoSteal(target)
+    if AutoStealConnection then
+        AutoStealConnection:Disconnect()
+        AutoStealConnection = nil
+    end
+    
+    if not target or not target.Character then return false end
+    
+    AutoStealEnabled = true
+    
+    AutoStealConnection = RunService.Heartbeat:Connect(function()
+        if not AutoStealEnabled or not target or not target.Character then
+            if AutoStealConnection then AutoStealConnection:Disconnect() end
+            AutoStealConnection = nil
             return
         end
         
@@ -45,116 +63,50 @@ local function ApplyAutoStyle(target)
         local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
         local targetRoot = targetHumanoid and targetHumanoid.RootPart
         local myChar = Player.Character
-        local myHumanoid = myChar and myChar:FindFirstChildOfClass("Humanoid")
-        local myRoot = myHumanoid and myHumanoid.RootPart
+        local myRoot = myChar and myChar:FindFirstChildOfClass("Humanoid") and myChar:FindFirstChildOfClass("Humanoid").RootPart
         
         if targetRoot and myRoot then
-            -- Слідуємо за гравцем
+            -- ГРАВЕЦЬ СЛІДУЄ ЗА ТОБОЮ (ти крадеш у нього)
             targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
             targetRoot.Velocity = myRoot.Velocity
             
-            -- Блокуємо сидіння
+            -- Блокуємо можливість сісти
             if targetHumanoid then
                 targetHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+                targetHumanoid.AutoRotate = false
             end
         end
     end)
-    return connection
+    
+    return true
 end
 
--- Запуск автостилу
-local function StartAutoStyle()
-    if not SelectedTarget then
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Error",
-            Text = "Select a target first!",
-            Duration = 2
-        })
-        return
+local function StopAutoSteal()
+    AutoStealEnabled = false
+    if AutoStealConnection then
+        AutoStealConnection:Disconnect()
+        AutoStealConnection = nil
     end
     
-    -- Зупиняємо старі підключення
-    for _, conn in pairs(AutoStyleConnections) do
-        if conn then conn:Disconnect() end
-    end
-    AutoStyleConnections = {}
-    
-    -- Запускаємо новий автостил
-    AutoStyleConnections[1] = ApplyAutoStyle(SelectedTarget)
-    AutoStyleEnabled = true
-    
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "AutoStyle",
-        Text = "Started on " .. SelectedTarget.Name,
-        Duration = 2
-    })
-end
-
--- Зупинка автостилу
-local function StopAutoStyle()
-    for _, conn in pairs(AutoStyleConnections) do
-        if conn then conn:Disconnect() end
-    end
-    AutoStyleConnections = {}
-    AutoStyleEnabled = false
-    
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "AutoStyle",
-        Text = "Stopped",
-        Duration = 2
-    })
-end
-
--- ========== ШВИДКІСТЬ ГРАВЦЯ ==========
-local function SetPlayerSpeed(speed)
-    PlayerSpeed = speed
-    local char = Player.Character
-    if char then
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
+    -- Відновлюємо налаштування гравця
+    if SelectedTarget and SelectedTarget.Character then
+        local humanoid = SelectedTarget.Character:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            humanoid.WalkSpeed = speed
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+            humanoid.AutoRotate = true
         end
-    end
-end
-
--- ========== ТЕЛЕПОРТ ДО БАЗИ ==========
-local function TeleportToBase()
-    local success, result = pcall(function()
-        local plotPos = workspace.Gardens and workspace.Gardens.Plot5 and workspace.Gardens.Plot5.PlotSizeReference
-        if plotPos then
-            Player.Character:PivotTo(plotPos.CFrame + Vector3.new(0, 100, 0))
-            game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = "TP",
-                Text = "Teleported to base!",
-                Duration = 2
-            })
-        else
-            game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = "Error",
-                Text = "Base not found!",
-                Duration = 2
-            })
-        end
-    end)
-    
-    if not success then
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Error",
-            Text = "Cannot teleport right now",
-            Duration = 2
-        })
     end
 end
 
 -- ========== СТВОРЕННЯ GUI ==========
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SimpleGUI"
+ScreenGui.Name = "AutoStealGUI"
 ScreenGui.Parent = game:GetService("CoreGui")
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 320)
-MainFrame.Position = UDim2.new(0.5, -130, 0.5, -160)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+MainFrame.Size = UDim2.new(0, 280, 0, 250)
+MainFrame.Position = UDim2.new(0.5, -140, 0.5, -125)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
@@ -167,23 +119,38 @@ MainCorner.Parent = MainFrame
 -- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-Title.Text = "AUTOSTYLE + FLICK"
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+Title.Text = "⚡ AUTOSTEAL + FLICK ⚡"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 16
+Title.TextSize = 14
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
 TitleCorner.Parent = Title
 
--- ========== ВИБІР ГРАВЦЯ ==========
+-- Close button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Position = UDim2.new(1, -30, 0, 5)
+CloseBtn.Size = UDim2.new(0, 25, 0, 25)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = Title
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
+
+-- Вибір гравця
 local TargetLabel = Instance.new("TextLabel")
 TargetLabel.Position = UDim2.new(0, 10, 0, 50)
 TargetLabel.Size = UDim2.new(1, -20, 0, 20)
 TargetLabel.BackgroundTransparency = 1
 TargetLabel.Text = "Select Target:"
-TargetLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+TargetLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 TargetLabel.Font = Enum.Font.Gotham
 TargetLabel.TextSize = 12
 TargetLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -191,8 +158,8 @@ TargetLabel.Parent = MainFrame
 
 local TargetDropdown = Instance.new("TextButton")
 TargetDropdown.Position = UDim2.new(0, 10, 0, 72)
-TargetDropdown.Size = UDim2.new(1, -20, 0, 30)
-TargetDropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+TargetDropdown.Size = UDim2.new(1, -20, 0, 32)
+TargetDropdown.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
 TargetDropdown.Text = "Click to select player"
 TargetDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
 TargetDropdown.Font = Enum.Font.Gotham
@@ -203,11 +170,11 @@ local DropdownCorner = Instance.new("UICorner")
 DropdownCorner.CornerRadius = UDim.new(0, 6)
 DropdownCorner.Parent = TargetDropdown
 
--- Список гравців (випадаючий)
+-- Список гравців
 local PlayerListFrame = Instance.new("ScrollingFrame")
-PlayerListFrame.Position = UDim2.new(0, 10, 0, 102)
+PlayerListFrame.Position = UDim2.new(0, 10, 0, 104)
 PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
-PlayerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+PlayerListFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 PlayerListFrame.BorderSizePixel = 0
 PlayerListFrame.Visible = false
 PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -224,31 +191,39 @@ local function UpdatePlayerList()
     end
     
     local yPos = 5
+    local playersList = {}
+    
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= Player then
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, -10, 0, 30)
-            btn.Position = UDim2.new(0, 5, 0, yPos)
-            btn.BackgroundColor3 = Color3.fromRGB(55, 55, 60)
-            btn.Text = plr.Name
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.Font = Enum.Font.Gotham
-            btn.TextSize = 12
-            btn.Parent = PlayerListFrame
-            
-            local btnCorner = Instance.new("UICorner")
-            btnCorner.CornerRadius = UDim.new(0, 5)
-            btnCorner.Parent = btn
-            
-            btn.MouseButton1Click:Connect(function()
-                SelectedTarget = plr
-                TargetDropdown.Text = plr.Name
-                PlayerListFrame.Visible = false
-                PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
-            end)
-            
-            yPos = yPos + 35
+            table.insert(playersList, plr)
         end
+    end
+    
+    table.sort(playersList, function(a, b) return a.Name:lower() < b.Name:lower() end)
+    
+    for _, plr in ipairs(playersList) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -10, 0, 30)
+        btn.Position = UDim2.new(0, 5, 0, yPos)
+        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+        btn.Text = plr.Name
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.Parent = PlayerListFrame
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 5)
+        btnCorner.Parent = btn
+        
+        btn.MouseButton1Click:Connect(function()
+            SelectedTarget = plr
+            TargetDropdown.Text = plr.Name
+            PlayerListFrame.Visible = false
+            PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
+        end)
+        
+        yPos = yPos + 35
     end
     
     PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, yPos + 5)
@@ -266,160 +241,63 @@ TargetDropdown.MouseButton1Click:Connect(function()
     end
 end)
 
--- ========== ГАЛОЧКИ ==========
--- Автостил
-local AutoStyleCheckbox = Instance.new("TextButton")
-AutoStyleCheckbox.Position = UDim2.new(0, 10, 0, 155)
-AutoStyleCheckbox.Size = UDim2.new(0, 20, 0, 20)
-AutoStyleCheckbox.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-AutoStyleCheckbox.BorderSizePixel = 0
-AutoStyleCheckbox.Text = ""
-AutoStyleCheckbox.Parent = MainFrame
+-- ========== ГАЛОЧКА AUTOSTEAL ==========
+local AutoStealCheckbox = Instance.new("TextButton")
+AutoStealCheckbox.Position = UDim2.new(0, 10, 0, 155)
+AutoStealCheckbox.Size = UDim2.new(0, 22, 0, 22)
+AutoStealCheckbox.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+AutoStealCheckbox.BorderSizePixel = 0
+AutoStealCheckbox.Text = ""
+AutoStealCheckbox.Parent = MainFrame
 
-local AutoStyleCheckCorner = Instance.new("UICorner")
-AutoStyleCheckCorner.CornerRadius = UDim.new(0, 4)
-AutoStyleCheckCorner.Parent = AutoStyleCheckbox
+local CheckCorner = Instance.new("UICorner")
+CheckCorner.CornerRadius = UDim.new(0, 4)
+CheckCorner.Parent = AutoStealCheckbox
 
-local AutoStyleCheckmark = Instance.new("TextLabel")
-AutoStyleCheckmark.Size = UDim2.new(1, 0, 1, 0)
-AutoStyleCheckmark.BackgroundTransparency = 1
-AutoStyleCheckmark.Text = "✓"
-AutoStyleCheckmark.TextColor3 = Color3.fromRGB(0, 255, 0)
-AutoStyleCheckmark.TextSize = 14
-AutoStyleCheckmark.Font = Enum.Font.GothamBold
-AutoStyleCheckmark.Visible = false
-AutoStyleCheckmark.Parent = AutoStyleCheckbox
+local Checkmark = Instance.new("TextLabel")
+Checkmark.Size = UDim2.new(1, 0, 1, 0)
+Checkmark.BackgroundTransparency = 1
+Checkmark.Text = "✓"
+Checkmark.TextColor3 = Color3.fromRGB(0, 255, 0)
+Checkmark.TextSize = 14
+Checkmark.Font = Enum.Font.GothamBold
+Checkmark.Visible = false
+Checkmark.Parent = AutoStealCheckbox
 
-local AutoStyleLabel = Instance.new("TextLabel")
-AutoStyleLabel.Position = UDim2.new(0, 38, 0, 155)
-AutoStyleLabel.Size = UDim2.new(1, -48, 0, 20)
-AutoStyleLabel.BackgroundTransparency = 1
-AutoStyleLabel.Text = "AutoStyle (follow player)"
-AutoStyleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-AutoStyleLabel.Font = Enum.Font.Gotham
-AutoStyleLabel.TextSize = 13
-AutoStyleLabel.TextXAlignment = Enum.TextXAlignment.Left
-AutoStyleLabel.Parent = MainFrame
+local AutoStealLabel = Instance.new("TextLabel")
+AutoStealLabel.Position = UDim2.new(0, 40, 0, 155)
+AutoStealLabel.Size = UDim2.new(1, -50, 0, 22)
+AutoStealLabel.BackgroundTransparency = 1
+AutoStealLabel.Text = "AUTOSTEAL (grief player)"
+AutoStealLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoStealLabel.Font = Enum.Font.Gotham
+AutoStealLabel.TextSize = 13
+AutoStealLabel.TextXAlignment = Enum.TextXAlignment.Left
+AutoStealLabel.Parent = MainFrame
 
--- Флік
-local FlickCheckbox = Instance.new("TextButton")
-FlickCheckbox.Position = UDim2.new(0, 10, 0, 185)
-FlickCheckbox.Size = UDim2.new(0, 20, 0, 20)
-FlickCheckbox.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-FlickCheckbox.BorderSizePixel = 0
-FlickCheckbox.Text = ""
-FlickCheckbox.Parent = MainFrame
+-- ========== КНОПКА FLICK ==========
+local FlickButton = Instance.new("TextButton")
+FlickButton.Position = UDim2.new(0, 10, 0, 190)
+FlickButton.Size = UDim2.new(1, -20, 0, 40)
+FlickButton.BackgroundColor3 = Color3.fromRGB(200, 80, 0)
+FlickButton.Text = "💥 FLICK (100 feet away) 💥"
+FlickButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlickButton.Font = Enum.Font.GothamBold
+FlickButton.TextSize = 12
+FlickButton.Parent = MainFrame
 
-local FlickCheckCorner = Instance.new("UICorner")
-FlickCheckCorner.CornerRadius = UDim.new(0, 4)
-FlickCheckCorner.Parent = FlickCheckbox
+local FlickCorner = Instance.new("UICorner")
+FlickCorner.CornerRadius = UDim.new(0, 8)
+FlickCorner.Parent = FlickButton
 
-local FlickCheckmark = Instance.new("TextLabel")
-FlickCheckmark.Size = UDim2.new(1, 0, 1, 0)
-FlickCheckmark.BackgroundTransparency = 1
-FlickCheckmark.Text = "✓"
-FlickCheckmark.TextColor3 = Color3.fromRGB(0, 255, 0)
-FlickCheckmark.TextSize = 14
-FlickCheckmark.Font = Enum.Font.GothamBold
-FlickCheckmark.Visible = false
-FlickCheckmark.Parent = FlickCheckbox
-
-local FlickLabel = Instance.new("TextLabel")
-FlickLabel.Position = UDim2.new(0, 38, 0, 185)
-FlickLabel.Size = UDim2.new(1, -48, 0, 20)
-FlickLabel.BackgroundTransparency = 1
-FlickLabel.Text = "Flick (teleport to me)"
-FlickLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-FlickLabel.Font = Enum.Font.Gotham
-FlickLabel.TextSize = 13
-FlickLabel.TextXAlignment = Enum.TextXAlignment.Left
-FlickLabel.Parent = MainFrame
-
--- ========== ШВИДКІСТЬ ГРАВЦЯ ==========
-local SpeedLabel = Instance.new("TextLabel")
-SpeedLabel.Position = UDim2.new(0, 10, 0, 218)
-SpeedLabel.Size = UDim2.new(1, -20, 0, 18)
-SpeedLabel.BackgroundTransparency = 1
-SpeedLabel.Text = "My Speed: 16"
-SpeedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-SpeedLabel.Font = Enum.Font.Gotham
-SpeedLabel.TextSize = 12
-SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-SpeedLabel.Parent = MainFrame
-
-local SpeedSlider = Instance.new("Frame")
-SpeedSlider.Position = UDim2.new(0, 10, 0, 238)
-SpeedSlider.Size = UDim2.new(1, -20, 0, 15)
-SpeedSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
-SpeedSlider.BorderSizePixel = 0
-SpeedSlider.Parent = MainFrame
-
-local SliderCorner = Instance.new("UICorner")
-SliderCorner.Parent = SpeedSlider
-
-local SpeedFill = Instance.new("Frame")
-SpeedFill.Size = UDim2.new(0.5, 0, 1, 0)
-SpeedFill.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
-SpeedFill.BorderSizePixel = 0
-SpeedFill.Parent = SpeedSlider
-
-local FillCorner = Instance.new("UICorner")
-FillCorner.Parent = SpeedFill
-
--- ========== КНОПКА TP ==========
-local TPButton = Instance.new("TextButton")
-TPButton.Position = UDim2.new(0, 10, 0, 268)
-TPButton.Size = UDim2.new(1, -20, 0, 35)
-TPButton.BackgroundColor3 = Color3.fromRGB(100, 80, 200)
-TPButton.Text = "TP TO BASE"
-TPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-TPButton.Font = Enum.Font.GothamBold
-TPButton.TextSize = 14
-TPButton.Parent = MainFrame
-
-local TPButtonCorner = Instance.new("UICorner")
-TPButtonCorner.CornerRadius = UDim.new(0, 6)
-TPButtonCorner.Parent = TPButton
-
--- ========== ЛОГІКА ГАЛОЧОК ==========
-AutoStyleCheckbox.MouseButton1Click:Connect(function()
-    if AutoStyleEnabled then
-        StopAutoStyle()
-        AutoStyleCheckmark.Visible = false
-    else
-        StartAutoStyle()
-        AutoStyleCheckmark.Visible = true
-    end
-end)
-
--- Флік логіка (телепорт до тебе кожну секунду)
-local FlickConnection = nil
-
-local function StartFlick()
-    if FlickConnection then FlickConnection:Disconnect() end
-    
-    FlickConnection = RunService.Heartbeat:Connect(function()
-        if FlickEnabled and SelectedTarget then
-            FlickPlayerToMe(SelectedTarget)
-        end
-    end)
-end
-
-local function StopFlick()
-    if FlickConnection then
-        FlickConnection:Disconnect()
-        FlickConnection = nil
-    end
-end
-
-FlickCheckbox.MouseButton1Click:Connect(function()
-    if FlickEnabled then
-        FlickEnabled = false
-        StopFlick()
-        FlickCheckmark.Visible = false
+-- ========== ЛОГІКА ==========
+AutoStealCheckbox.MouseButton1Click:Connect(function()
+    if AutoStealEnabled then
+        StopAutoSteal()
+        Checkmark.Visible = false
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Flick",
-            Text = "Disabled",
+            Title = "AutoSteal",
+            Text = "Stopped",
             Duration = 1
         })
     else
@@ -431,78 +309,79 @@ FlickCheckbox.MouseButton1Click:Connect(function()
             })
             return
         end
-        FlickEnabled = true
-        StartFlick()
-        FlickCheckmark.Visible = true
+        StartAutoSteal(SelectedTarget)
+        Checkmark.Visible = true
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Flick",
-            Text = "Enabled - " .. SelectedTarget.Name .. " will teleport to you",
+            Title = "AutoSteal",
+            Text = "Stealing from " .. SelectedTarget.Name,
             Duration = 2
         })
     end
 end)
 
--- ========== ПОВЗУНОК ШВИДКОСТІ ==========
-local dragging = false
-SpeedSlider.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
+FlickButton.MouseButton1Click:Connect(function()
+    if not SelectedTarget then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Error",
+            Text = "Select a target first!",
+            Duration = 2
+        })
+        return
+    end
+    
+    -- Якщо автостил включений - вимикаємо на час фліку
+    local wasEnabled = AutoStealEnabled
+    if wasEnabled then
+        StopAutoSteal()
+        Checkmark.Visible = false
+    end
+    
+    -- Флікаємо гравця
+    FlickPlayerAway(SelectedTarget)
+    
+    -- Затримка
+    task.wait(0.5)
+    
+    -- Вмикаємо знову
+    if wasEnabled then
+        StartAutoSteal(SelectedTarget)
+        Checkmark.Visible = true
     end
 end)
 
-SpeedSlider.InputEnded:Connect(function()
-    dragging = false
+-- Close button
+CloseBtn.MouseButton1Click:Connect(function()
+    StopAutoSteal()
+    ScreenGui:Destroy()
 end)
 
-SpeedSlider.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local pos = input.Position.X - SpeedSlider.AbsolutePosition.X
-        local width = SpeedSlider.AbsoluteSize.X
-        local percent = math.clamp(pos / width, 0, 1)
-        local speedValue = 16 + (percent * 84) -- від 16 до 100
-        SpeedFill.Size = UDim2.new(percent, 0, 1, 0)
-        SpeedLabel.Text = "My Speed: " .. math.floor(speedValue)
-        SetPlayerSpeed(speedValue)
-    end
-end)
-
--- ========== КНОПКА TP ==========
-TPButton.MouseButton1Click:Connect(TeleportToBase)
-
--- ========== ОНОВЛЕННЯ ПРИ ЗМІНІ ГРАВЦІВ ==========
+-- Оновлення при видаленні гравця
 Players.PlayerRemoving:Connect(function(plr)
     if SelectedTarget == plr then
         SelectedTarget = nil
         TargetDropdown.Text = "Click to select player"
-        if AutoStyleEnabled then StopAutoStyle() end
-        if FlickEnabled then
-            FlickEnabled = false
-            StopFlick()
-            FlickCheckmark.Visible = false
+        if AutoStealEnabled then
+            StopAutoSteal()
+            Checkmark.Visible = false
         end
-        AutoStyleCheckmark.Visible = false
     end
 end)
 
--- ========== СЛУЖБОВІ ФУНКЦІЇ ==========
--- Стеження за зміною персонажа гравця
-Player.CharacterAdded:Connect(function(char)
-    task.wait(0.5)
-    SetPlayerSpeed(PlayerSpeed)
-    
-    if AutoStyleEnabled and SelectedTarget then
-        StopAutoStyle()
-        StartAutoStyle()
+-- При зміні персонажа гравця
+Player.CharacterAdded:Connect(function()
+    if AutoStealEnabled and SelectedTarget then
+        StopAutoSteal()
+        task.wait(0.5)
+        StartAutoSteal(SelectedTarget)
     end
 end)
 
 -- Ініціалізація
-SetPlayerSpeed(16)
 UpdatePlayerList()
 
 -- Повідомлення
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Loaded",
-    Text = "AutoStyle + Flick GUI Ready!",
+    Text = "AutoSteal + Flick (100ft) Ready!",
     Duration = 2
 })
