@@ -1,31 +1,168 @@
--- Простий GUI: Автостил + Спіди + Флік
+-- ПРОСТИЙ GUI: АВТОСТИЛ + ФЛІК + СПІД + ТП
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Player = Players.LocalPlayer
 
--- Змінні
-local SelectedTargets = {}
-local AutoStyleActive = false
-local Connections = {}
-local SpeedMultipliers = {}
+-- ========== ЗМІННІ ==========
+local AutoStyleEnabled = false
+local FlickEnabled = false
+local AutoStyleConnections = {}
+local PlayerSpeed = 16
+local SelectedTarget = nil
 
--- Створення GUI
+-- ========== ФУНКЦІЯ ФЛІКУ (телепорт до тебе) ==========
+local function FlickPlayerToMe(target)
+    if not target or not target.Character then return end
+    
+    local targetRoot = target.Character:FindFirstChild("Humanoid") and target.Character.Humanoid.RootPart
+    local myChar = Player.Character
+    local myRoot = myChar and myChar:FindFirstChild("Humanoid") and myChar.Humanoid.RootPart
+    
+    if targetRoot and myRoot then
+        -- Телепортуємо гравця до мене
+        targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
+        targetRoot.Velocity = Vector3.new(0, 0, 0)
+        
+        -- Невелике затримання, щоб він не втік
+        task.wait(0.1)
+        targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
+        
+        print("Flicked " .. target.Name .. " to you!")
+    end
+end
+
+-- ========== АВТОСТИЛ (механіка з першого скрипта) ==========
+local function ApplyAutoStyle(target)
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        if not AutoStyleEnabled or not target or not target.Character then
+            if connection then connection:Disconnect() end
+            return
+        end
+        
+        local targetChar = target.Character
+        local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
+        local targetRoot = targetHumanoid and targetHumanoid.RootPart
+        local myChar = Player.Character
+        local myHumanoid = myChar and myChar:FindFirstChildOfClass("Humanoid")
+        local myRoot = myHumanoid and myHumanoid.RootPart
+        
+        if targetRoot and myRoot then
+            -- Слідуємо за гравцем
+            targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 2)
+            targetRoot.Velocity = myRoot.Velocity
+            
+            -- Блокуємо сидіння
+            if targetHumanoid then
+                targetHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+            end
+        end
+    end)
+    return connection
+end
+
+-- Запуск автостилу
+local function StartAutoStyle()
+    if not SelectedTarget then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Error",
+            Text = "Select a target first!",
+            Duration = 2
+        })
+        return
+    end
+    
+    -- Зупиняємо старі підключення
+    for _, conn in pairs(AutoStyleConnections) do
+        if conn then conn:Disconnect() end
+    end
+    AutoStyleConnections = {}
+    
+    -- Запускаємо новий автостил
+    AutoStyleConnections[1] = ApplyAutoStyle(SelectedTarget)
+    AutoStyleEnabled = true
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "AutoStyle",
+        Text = "Started on " .. SelectedTarget.Name,
+        Duration = 2
+    })
+end
+
+-- Зупинка автостилу
+local function StopAutoStyle()
+    for _, conn in pairs(AutoStyleConnections) do
+        if conn then conn:Disconnect() end
+    end
+    AutoStyleConnections = {}
+    AutoStyleEnabled = false
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "AutoStyle",
+        Text = "Stopped",
+        Duration = 2
+    })
+end
+
+-- ========== ШВИДКІСТЬ ГРАВЦЯ ==========
+local function SetPlayerSpeed(speed)
+    PlayerSpeed = speed
+    local char = Player.Character
+    if char then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = speed
+        end
+    end
+end
+
+-- ========== ТЕЛЕПОРТ ДО БАЗИ ==========
+local function TeleportToBase()
+    local success, result = pcall(function()
+        local plotPos = workspace.Gardens and workspace.Gardens.Plot5 and workspace.Gardens.Plot5.PlotSizeReference
+        if plotPos then
+            Player.Character:PivotTo(plotPos.CFrame + Vector3.new(0, 100, 0))
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "TP",
+                Text = "Teleported to base!",
+                Duration = 2
+            })
+        else
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "Error",
+                Text = "Base not found!",
+                Duration = 2
+            })
+        end
+    end)
+    
+    if not success then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Error",
+            Text = "Cannot teleport right now",
+            Duration = 2
+        })
+    end
+end
+
+-- ========== СТВОРЕННЯ GUI ==========
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SimpleGUI"
 ScreenGui.Parent = game:GetService("CoreGui")
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 280, 0, 400)
-MainFrame.Position = UDim2.new(0.5, -140, 0.5, -200)
+MainFrame.Size = UDim2.new(0, 260, 0, 320)
+MainFrame.Position = UDim2.new(0.5, -130, 0.5, -160)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
-local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0, 10)
-Corner.Parent = MainFrame
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
 
 -- Заголовок
 local Title = Instance.new("TextLabel")
@@ -40,12 +177,39 @@ Title.Parent = MainFrame
 local TitleCorner = Instance.new("UICorner")
 TitleCorner.Parent = Title
 
--- Список гравців
+-- ========== ВИБІР ГРАВЦЯ ==========
+local TargetLabel = Instance.new("TextLabel")
+TargetLabel.Position = UDim2.new(0, 10, 0, 50)
+TargetLabel.Size = UDim2.new(1, -20, 0, 20)
+TargetLabel.BackgroundTransparency = 1
+TargetLabel.Text = "Select Target:"
+TargetLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+TargetLabel.Font = Enum.Font.Gotham
+TargetLabel.TextSize = 12
+TargetLabel.TextXAlignment = Enum.TextXAlignment.Left
+TargetLabel.Parent = MainFrame
+
+local TargetDropdown = Instance.new("TextButton")
+TargetDropdown.Position = UDim2.new(0, 10, 0, 72)
+TargetDropdown.Size = UDim2.new(1, -20, 0, 30)
+TargetDropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+TargetDropdown.Text = "Click to select player"
+TargetDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+TargetDropdown.Font = Enum.Font.Gotham
+TargetDropdown.TextSize = 12
+TargetDropdown.Parent = MainFrame
+
+local DropdownCorner = Instance.new("UICorner")
+DropdownCorner.CornerRadius = UDim.new(0, 6)
+DropdownCorner.Parent = TargetDropdown
+
+-- Список гравців (випадаючий)
 local PlayerListFrame = Instance.new("ScrollingFrame")
-PlayerListFrame.Position = UDim2.new(0, 10, 0, 45)
-PlayerListFrame.Size = UDim2.new(1, -20, 0, 200)
+PlayerListFrame.Position = UDim2.new(0, 10, 0, 102)
+PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
 PlayerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
 PlayerListFrame.BorderSizePixel = 0
+PlayerListFrame.Visible = false
 PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 PlayerListFrame.ScrollBarThickness = 4
 PlayerListFrame.Parent = MainFrame
@@ -53,19 +217,138 @@ PlayerListFrame.Parent = MainFrame
 local ListCorner = Instance.new("UICorner")
 ListCorner.Parent = PlayerListFrame
 
--- Повзунок швидкості
+-- Оновлення списку гравців
+local function UpdatePlayerList()
+    for _, child in pairs(PlayerListFrame:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    
+    local yPos = 5
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= Player then
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, -10, 0, 30)
+            btn.Position = UDim2.new(0, 5, 0, yPos)
+            btn.BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+            btn.Text = plr.Name
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.Font = Enum.Font.Gotham
+            btn.TextSize = 12
+            btn.Parent = PlayerListFrame
+            
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, 5)
+            btnCorner.Parent = btn
+            
+            btn.MouseButton1Click:Connect(function()
+                SelectedTarget = plr
+                TargetDropdown.Text = plr.Name
+                PlayerListFrame.Visible = false
+                PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
+            end)
+            
+            yPos = yPos + 35
+        end
+    end
+    
+    PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, yPos + 5)
+end
+
+-- Показати/сховати список
+TargetDropdown.MouseButton1Click:Connect(function()
+    if PlayerListFrame.Visible then
+        PlayerListFrame.Visible = false
+        PlayerListFrame.Size = UDim2.new(1, -20, 0, 0)
+    else
+        UpdatePlayerList()
+        PlayerListFrame.Visible = true
+        PlayerListFrame.Size = UDim2.new(1, -20, 0, 120)
+    end
+end)
+
+-- ========== ГАЛОЧКИ ==========
+-- Автостил
+local AutoStyleCheckbox = Instance.new("TextButton")
+AutoStyleCheckbox.Position = UDim2.new(0, 10, 0, 155)
+AutoStyleCheckbox.Size = UDim2.new(0, 20, 0, 20)
+AutoStyleCheckbox.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+AutoStyleCheckbox.BorderSizePixel = 0
+AutoStyleCheckbox.Text = ""
+AutoStyleCheckbox.Parent = MainFrame
+
+local AutoStyleCheckCorner = Instance.new("UICorner")
+AutoStyleCheckCorner.CornerRadius = UDim.new(0, 4)
+AutoStyleCheckCorner.Parent = AutoStyleCheckbox
+
+local AutoStyleCheckmark = Instance.new("TextLabel")
+AutoStyleCheckmark.Size = UDim2.new(1, 0, 1, 0)
+AutoStyleCheckmark.BackgroundTransparency = 1
+AutoStyleCheckmark.Text = "✓"
+AutoStyleCheckmark.TextColor3 = Color3.fromRGB(0, 255, 0)
+AutoStyleCheckmark.TextSize = 14
+AutoStyleCheckmark.Font = Enum.Font.GothamBold
+AutoStyleCheckmark.Visible = false
+AutoStyleCheckmark.Parent = AutoStyleCheckbox
+
+local AutoStyleLabel = Instance.new("TextLabel")
+AutoStyleLabel.Position = UDim2.new(0, 38, 0, 155)
+AutoStyleLabel.Size = UDim2.new(1, -48, 0, 20)
+AutoStyleLabel.BackgroundTransparency = 1
+AutoStyleLabel.Text = "AutoStyle (follow player)"
+AutoStyleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoStyleLabel.Font = Enum.Font.Gotham
+AutoStyleLabel.TextSize = 13
+AutoStyleLabel.TextXAlignment = Enum.TextXAlignment.Left
+AutoStyleLabel.Parent = MainFrame
+
+-- Флік
+local FlickCheckbox = Instance.new("TextButton")
+FlickCheckbox.Position = UDim2.new(0, 10, 0, 185)
+FlickCheckbox.Size = UDim2.new(0, 20, 0, 20)
+FlickCheckbox.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+FlickCheckbox.BorderSizePixel = 0
+FlickCheckbox.Text = ""
+FlickCheckbox.Parent = MainFrame
+
+local FlickCheckCorner = Instance.new("UICorner")
+FlickCheckCorner.CornerRadius = UDim.new(0, 4)
+FlickCheckCorner.Parent = FlickCheckbox
+
+local FlickCheckmark = Instance.new("TextLabel")
+FlickCheckmark.Size = UDim2.new(1, 0, 1, 0)
+FlickCheckmark.BackgroundTransparency = 1
+FlickCheckmark.Text = "✓"
+FlickCheckmark.TextColor3 = Color3.fromRGB(0, 255, 0)
+FlickCheckmark.TextSize = 14
+FlickCheckmark.Font = Enum.Font.GothamBold
+FlickCheckmark.Visible = false
+FlickCheckmark.Parent = FlickCheckbox
+
+local FlickLabel = Instance.new("TextLabel")
+FlickLabel.Position = UDim2.new(0, 38, 0, 185)
+FlickLabel.Size = UDim2.new(1, -48, 0, 20)
+FlickLabel.BackgroundTransparency = 1
+FlickLabel.Text = "Flick (teleport to me)"
+FlickLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlickLabel.Font = Enum.Font.Gotham
+FlickLabel.TextSize = 13
+FlickLabel.TextXAlignment = Enum.TextXAlignment.Left
+FlickLabel.Parent = MainFrame
+
+-- ========== ШВИДКІСТЬ ГРАВЦЯ ==========
 local SpeedLabel = Instance.new("TextLabel")
-SpeedLabel.Position = UDim2.new(0, 10, 0, 255)
-SpeedLabel.Size = UDim2.new(1, -20, 0, 20)
+SpeedLabel.Position = UDim2.new(0, 10, 0, 218)
+SpeedLabel.Size = UDim2.new(1, -20, 0, 18)
 SpeedLabel.BackgroundTransparency = 1
-SpeedLabel.Text = "Speed: 1.0x"
-SpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedLabel.Text = "My Speed: 16"
+SpeedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 SpeedLabel.Font = Enum.Font.Gotham
 SpeedLabel.TextSize = 12
+SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
 SpeedLabel.Parent = MainFrame
 
 local SpeedSlider = Instance.new("Frame")
-SpeedSlider.Position = UDim2.new(0, 10, 0, 278)
+SpeedSlider.Position = UDim2.new(0, 10, 0, 238)
 SpeedSlider.Size = UDim2.new(1, -20, 0, 15)
 SpeedSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
 SpeedSlider.BorderSizePixel = 0
@@ -75,250 +358,91 @@ local SliderCorner = Instance.new("UICorner")
 SliderCorner.Parent = SpeedSlider
 
 local SpeedFill = Instance.new("Frame")
-SpeedFill.Size = UDim2.new(0.33, 0, 1, 0)
-SpeedFill.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+SpeedFill.Size = UDim2.new(0.5, 0, 1, 0)
+SpeedFill.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
 SpeedFill.BorderSizePixel = 0
 SpeedFill.Parent = SpeedSlider
 
 local FillCorner = Instance.new("UICorner")
 FillCorner.Parent = SpeedFill
 
--- Кнопки
-local StartBtn = Instance.new("TextButton")
-StartBtn.Position = UDim2.new(0, 10, 0, 305)
-StartBtn.Size = UDim2.new(0.45, -5, 0, 35)
-StartBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-StartBtn.Text = "START"
-StartBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-StartBtn.Font = Enum.Font.GothamBold
-StartBtn.TextSize = 14
-StartBtn.Parent = MainFrame
+-- ========== КНОПКА TP ==========
+local TPButton = Instance.new("TextButton")
+TPButton.Position = UDim2.new(0, 10, 0, 268)
+TPButton.Size = UDim2.new(1, -20, 0, 35)
+TPButton.BackgroundColor3 = Color3.fromRGB(100, 80, 200)
+TPButton.Text = "TP TO BASE"
+TPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TPButton.Font = Enum.Font.GothamBold
+TPButton.TextSize = 14
+TPButton.Parent = MainFrame
 
-local StartCorner = Instance.new("UICorner")
-StartCorner.Parent = StartBtn
+local TPButtonCorner = Instance.new("UICorner")
+TPButtonCorner.CornerRadius = UDim.new(0, 6)
+TPButtonCorner.Parent = TPButton
 
-local StopBtn = Instance.new("TextButton")
-StopBtn.Position = UDim2.new(0.55, 0, 0, 305)
-StopBtn.Size = UDim2.new(0.45, -5, 0, 35)
-StopBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-StopBtn.Text = "STOP"
-StopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-StopBtn.Font = Enum.Font.GothamBold
-StopBtn.TextSize = 14
-StopBtn.Parent = MainFrame
-
-local StopCorner = Instance.new("UICorner")
-StopCorner.Parent = StopBtn
-
-local FlickBtn = Instance.new("TextButton")
-FlickBtn.Position = UDim2.new(0, 10, 0, 350)
-FlickBtn.Size = UDim2.new(1, -20, 0, 35)
-FlickBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
-FlickBtn.Text = "FLICK SELECTED"
-FlickBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-FlickBtn.Font = Enum.Font.GothamBold
-FlickBtn.TextSize = 14
-FlickBtn.Parent = MainFrame
-
-local FlickCorner = Instance.new("UICorner")
-FlickCorner.Parent = FlickBtn
-
--- Функція оновлення списку гравців
-local function RefreshPlayerList()
-    for _, child in pairs(PlayerListFrame:GetChildren()) do
-        if child:IsA("Frame") then child:Destroy() end
+-- ========== ЛОГІКА ГАЛОЧОК ==========
+AutoStyleCheckbox.MouseButton1Click:Connect(function()
+    if AutoStyleEnabled then
+        StopAutoStyle()
+        AutoStyleCheckmark.Visible = false
+    else
+        StartAutoStyle()
+        AutoStyleCheckmark.Visible = true
     end
-    
-    local yPos = 5
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= Player then
-            local entry = Instance.new("Frame")
-            entry.Size = UDim2.new(1, -10, 0, 35)
-            entry.Position = UDim2.new(0, 5, 0, yPos)
-            entry.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-            entry.BorderSizePixel = 0
-            entry.Parent = PlayerListFrame
-            
-            local entryCorner = Instance.new("UICorner")
-            entryCorner.CornerRadius = UDim.new(0, 5)
-            entryCorner.Parent = entry
-            
-            local checkbox = Instance.new("TextButton")
-            checkbox.Size = UDim2.new(0, 22, 0, 22)
-            checkbox.Position = UDim2.new(0, 8, 0.5, -11)
-            checkbox.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
-            checkbox.BorderSizePixel = 0
-            checkbox.Text = ""
-            checkbox.Parent = entry
-            
-            local checkCorner = Instance.new("UICorner")
-            checkCorner.Parent = checkbox
-            
-            local checkmark = Instance.new("TextLabel")
-            checkmark.Size = UDim2.new(1, 0, 1, 0)
-            checkmark.BackgroundTransparency = 1
-            checkmark.Text = "✓"
-            checkmark.TextColor3 = Color3.fromRGB(0, 255, 0)
-            checkmark.TextSize = 14
-            checkmark.Font = Enum.Font.GothamBold
-            checkmark.Visible = SelectedTargets[plr.Name] ~= nil
-            checkmark.Parent = checkbox
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(1, -40, 1, 0)
-            nameLabel.Position = UDim2.new(0, 38, 0, 0)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Text = plr.Name
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nameLabel.TextSize = 13
-            nameLabel.Font = Enum.Font.Gotham
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            nameLabel.Parent = entry
-            
-            local speedText = Instance.new("TextLabel")
-            speedText.Size = UDim2.new(0, 45, 1, 0)
-            speedText.Position = UDim2.new(1, -50, 0, 0)
-            speedText.BackgroundTransparency = 1
-            speedText.Text = string.format("%.1fx", SpeedMultipliers[plr.Name] or 1)
-            speedText.TextColor3 = Color3.fromRGB(100, 200, 150)
-            speedText.TextSize = 11
-            speedText.Font = Enum.Font.Gotham
-            speedText.TextXAlignment = Enum.TextXAlignment.Right
-            speedText.Parent = entry
-            
-            -- Виділення гравця
-            local click = Instance.new("TextButton")
-            click.Size = UDim2.new(1, 0, 1, 0)
-            click.BackgroundTransparency = 1
-            click.Text = ""
-            click.Parent = entry
-            
-            click.MouseButton1Click:Connect(function()
-                if SelectedTargets[plr.Name] then
-                    SelectedTargets[plr.Name] = nil
-                    checkmark.Visible = false
-                else
-                    SelectedTargets[plr.Name] = plr
-                    checkmark.Visible = true
-                end
-            end)
-            
-            yPos = yPos + 42
-        end
-    end
-    
-    PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, yPos + 5)
-end
+end)
 
--- Функція автостилу
-local function AutoStylePlayer(target)
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not AutoStyleActive or not target.Character then
-            if connection then connection:Disconnect() end
-            return
-        end
-        
-        local targetChar = target.Character
-        local targetRoot = targetChar:FindFirstChild("Humanoid") and targetChar.Humanoid.RootPart
-        local playerChar = Player.Character
-        local playerRoot = playerChar and playerChar:FindFirstChild("Humanoid") and playerChar.Humanoid.RootPart
-        
-        if targetRoot and playerRoot then
-            -- Застосування швидкості
-            local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                local speed = (SpeedMultipliers[target.Name] or 1) * 16
-                humanoid.WalkSpeed = speed
-            end
-            
-            -- Слідування за гравцем
-            targetRoot.CFrame = playerRoot.CFrame * CFrame.new(0, 0, 2)
-            targetRoot.Velocity = playerRoot.Velocity
+-- Флік логіка (телепорт до тебе кожну секунду)
+local FlickConnection = nil
+
+local function StartFlick()
+    if FlickConnection then FlickConnection:Disconnect() end
+    
+    FlickConnection = RunService.Heartbeat:Connect(function()
+        if FlickEnabled and SelectedTarget then
+            FlickPlayerToMe(SelectedTarget)
         end
     end)
-    return connection
 end
 
--- Запуск автостилу
-local function StartAutoStyle()
-    if AutoStyleActive then return end
-    
-    for name, conn in pairs(Connections) do
-        if conn then conn:Disconnect() end
-    end
-    Connections = {}
-    
-    local count = 0
-    for name, plr in pairs(SelectedTargets) do
-        if plr and plr.Character then
-            Connections[name] = AutoStylePlayer(plr)
-            count = count + 1
-        end
-    end
-    
-    if count > 0 then
-        AutoStyleActive = true
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "AutoStyle",
-            Text = "Started on " .. count .. " player(s)",
-            Duration = 2
-        })
+local function StopFlick()
+    if FlickConnection then
+        FlickConnection:Disconnect()
+        FlickConnection = nil
     end
 end
 
--- Зупинка автостилу
-local function StopAutoStyle()
-    for name, conn in pairs(Connections) do
-        if conn then conn:Disconnect() end
-    end
-    Connections = {}
-    AutoStyleActive = false
-    
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "AutoStyle",
-        Text = "Stopped",
-        Duration = 2
-    })
-end
-
--- Функція фліку (відкидання гравця)
-local function FlickPlayer(target)
-    if not target.Character then return end
-    
-    local root = target.Character:FindFirstChild("Humanoid") and target.Character.Humanoid.RootPart
-    if root then
-        -- Зупиняємо автостил
-        local wasActive = AutoStyleActive
-        if wasActive then StopAutoStyle() end
-        
-        -- Відкидаємо
-        root.Velocity = Vector3.new(0, 200, 0)
-        root.AssemblyLinearVelocity = Vector3.new(0, 250, 0)
-        
-        -- Чекаємо
-        task.wait(0.5)
-        
-        -- Запускаємо автостил знову
-        if wasActive then StartAutoStyle() end
-        
+FlickCheckbox.MouseButton1Click:Connect(function()
+    if FlickEnabled then
+        FlickEnabled = false
+        StopFlick()
+        FlickCheckmark.Visible = false
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Flick",
-            Text = "Flicked " .. target.Name,
+            Text = "Disabled",
+            Duration = 1
+        })
+    else
+        if not SelectedTarget then
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "Error",
+                Text = "Select a target first!",
+                Duration = 2
+            })
+            return
+        end
+        FlickEnabled = true
+        StartFlick()
+        FlickCheckmark.Visible = true
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Flick",
+            Text = "Enabled - " .. SelectedTarget.Name .. " will teleport to you",
             Duration = 2
         })
     end
-end
+end)
 
--- Оновлення швидкості для всіх
-local function UpdateGlobalSpeed(value)
-    for name, _ in pairs(SelectedTargets) do
-        SpeedMultipliers[name] = value
-    end
-    RefreshPlayerList()
-end
-
--- Повзунок швидкості
+-- ========== ПОВЗУНОК ШВИДКОСТІ ==========
 local dragging = false
 SpeedSlider.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -335,43 +459,50 @@ SpeedSlider.InputChanged:Connect(function(input)
         local pos = input.Position.X - SpeedSlider.AbsolutePosition.X
         local width = SpeedSlider.AbsoluteSize.X
         local percent = math.clamp(pos / width, 0, 1)
-        local multiplier = percent * 3
+        local speedValue = 16 + (percent * 84) -- від 16 до 100
         SpeedFill.Size = UDim2.new(percent, 0, 1, 0)
-        SpeedLabel.Text = "Speed: " .. string.format("%.1fx", multiplier) .. "x"
-        UpdateGlobalSpeed(multiplier)
+        SpeedLabel.Text = "My Speed: " .. math.floor(speedValue)
+        SetPlayerSpeed(speedValue)
     end
 end)
 
--- Кнопки
-StartBtn.MouseButton1Click:Connect(StartAutoStyle)
-StopBtn.MouseButton1Click:Connect(StopAutoStyle)
+-- ========== КНОПКА TP ==========
+TPButton.MouseButton1Click:Connect(TeleportToBase)
 
-FlickBtn.MouseButton1Click:Connect(function()
-    for name, plr in pairs(SelectedTargets) do
-        FlickPlayer(plr)
-        task.wait(0.2)
-    end
-end)
-
--- Оновлення при зміні гравців
-Players.PlayerAdded:Connect(RefreshPlayerList)
+-- ========== ОНОВЛЕННЯ ПРИ ЗМІНІ ГРАВЦІВ ==========
 Players.PlayerRemoving:Connect(function(plr)
-    SelectedTargets[plr.Name] = nil
-    if Connections[plr.Name] then
-        Connections[plr.Name]:Disconnect()
-        Connections[plr.Name] = nil
+    if SelectedTarget == plr then
+        SelectedTarget = nil
+        TargetDropdown.Text = "Click to select player"
+        if AutoStyleEnabled then StopAutoStyle() end
+        if FlickEnabled then
+            FlickEnabled = false
+            StopFlick()
+            FlickCheckmark.Visible = false
+        end
+        AutoStyleCheckmark.Visible = false
     end
-    RefreshPlayerList()
+end)
+
+-- ========== СЛУЖБОВІ ФУНКЦІЇ ==========
+-- Стеження за зміною персонажа гравця
+Player.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    SetPlayerSpeed(PlayerSpeed)
+    
+    if AutoStyleEnabled and SelectedTarget then
+        StopAutoStyle()
+        StartAutoStyle()
+    end
 end)
 
 -- Ініціалізація
-RefreshPlayerList()
-SpeedLabel.Text = "Speed: 1.0x"
-SpeedFill.Size = UDim2.new(0.33, 0, 1, 0)
+SetPlayerSpeed(16)
+UpdatePlayerList()
 
 -- Повідомлення
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Loaded",
-    Text = "Simple AutoStyle + Flick GUI",
+    Text = "AutoStyle + Flick GUI Ready!",
     Duration = 2
 })
